@@ -658,16 +658,10 @@
 
     <!-- ── TOOL 2: PDF Layout Check ── -->
     <div class="tool-card">
-      <div class="tool-id">TOOL_02 · PDF · AI-POWERED</div>
+      <div class="tool-id">TOOL_02 · PDF · FREE · NO KEY REQUIRED</div>
       <div class="tool-title">ПРОВЕРКА PDF-МАКЕТА</div>
       <div class="tool-desc">
-        Загрузите PDF-макет — система проверит орфографию, пунктуацию и опечатки. Текст анализируется через Claude AI напрямую из вашего браузера.
-      </div>
-
-      <div class="api-key-group">
-        <label>ANTHROPIC API KEY (хранится только в памяти вкладки)</label>
-        <input type="password" id="api-key-input" placeholder="sk-ant-...">
-        <div class="api-key-note">// ключ не отправляется никуда, кроме api.anthropic.com</div>
+        Загрузите PDF-макет — система проверит орфографию, пунктуацию и опечатки через бесплатный LanguageTool. Никаких ключей и регистрации.
       </div>
 
       <div class="upload-zone" id="pdf-zone">
@@ -820,7 +814,7 @@
   }
 
   // ─────────────────────────────────────────────
-  //  PDF TOOL
+  //  PDF TOOL — LanguageTool (бесплатно, без ключа)
   // ─────────────────────────────────────────────
   let pdfReport = null;
 
@@ -834,10 +828,18 @@
     setStatus('pdf', 'Файл загружен. Нажмите ПРОВЕРИТЬ.', 'ok');
   }
 
-  async function runPDFCheck() {
-    const apiKey = document.getElementById('api-key-input').value.trim();
-    if (!apiKey) { setStatus('pdf','Введите Anthropic API Key','err'); return; }
+  // Категории ошибок LanguageTool → по-русски
+  const LT_CATEGORIES = {
+    'TYPOS': 'Опечатка',
+    'GRAMMAR': 'Грамматика',
+    'PUNCTUATION': 'Пунктуация',
+    'CASING': 'Регистр',
+    'STYLE': 'Стиль',
+    'TYPOGRAPHY': 'Типографика',
+    'MISC': 'Прочее'
+  };
 
+  async function runPDFCheck() {
     const fileInput = document.getElementById('pdf-file');
     const file = fileInput.files[0];
     if (!file) { setStatus('pdf','Выберите PDF файл','err'); return; }
@@ -846,7 +848,7 @@
     document.getElementById('pdf-run-btn').disabled = true;
 
     try {
-      // Extract text via PDF.js
+      // 1. Извлечь текст
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       let fullText = '';
@@ -857,79 +859,90 @@
       }
 
       if (!fullText.trim()) {
-        setStatus('pdf','PDF не содержит извлекаемого текста (возможно, сканированный)','err');
+        setStatus('pdf','PDF не содержит текста (возможно, это отсканированное изображение)','err');
         document.getElementById('pdf-run-btn').disabled = false;
         return;
       }
 
-      setStatus('pdf','Отправляю текст на проверку ИИ...','loading');
+      // 2. Отправить в LanguageTool (бесплатно, без ключа)
+      setStatus('pdf','Проверяю орфографию и пунктуацию...','loading');
+      const chunk = fullText.substring(0, 20000); // лимит бесплатного API
 
-      const truncated = fullText.length > 8000 ? fullText.substring(0,8000) + '\n...[текст обрезан]' : fullText;
-
-      const resp = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true'
-        },
-        body: JSON.stringify({
-          model: 'claude-opus-4-5',
-          max_tokens: 2000,
-          messages: [{
-            role: 'user',
-            content: `Проверь следующий текст из PDF-макета на:
-1. Орфографические ошибки
-2. Пунктуационные ошибки  
-3. Опечатки и грамматические ошибки
-
-Для каждой найденной ошибки укажи:
-- Тип ошибки
-- Контекст (фрагмент текста)
-- Исправление
-
-Если ошибок нет — напиши "Ошибок не обнаружено".
-
-ТЕКСТ:
----
-${truncated}
----
-
-Ответь в формате:
-## Орфография
-[список ошибок или "Ошибок не найдено"]
-
-## Пунктуация
-[список ошибок или "Ошибок не найдено"]
-
-## Опечатки / Грамматика
-[список ошибок или "Ошибок не найдено"]
-
-## Итог
-[краткое резюме]`
-          }]
-        })
+      const params = new URLSearchParams({
+        text: chunk,
+        language: 'ru',
+        enabledOnly: 'false'
       });
 
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        throw new Error(err?.error?.message || `HTTP ${resp.status}`);
-      }
+      const resp = await fetch('https://api.languagetool.org/v2/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params
+      });
+
+      if (!resp.ok) throw new Error(`Ошибка сервера: HTTP ${resp.status}`);
 
       const data = await resp.json();
-      const text = data.content?.map(b => b.text || '').join('') || 'Нет ответа';
-      pdfReport = text;
+      const matches = data.matches || [];
 
+      // 3. Сгруппировать по типу
+      const groups = { 'Опечатка': [], 'Грамматика': [], 'Пунктуация': [], 'Прочее': [] };
+      matches.forEach(m => {
+        const cat = LT_CATEGORIES[m.rule?.category?.id] || 'Прочее';
+        const group = groups[cat] || groups['Прочее'];
+        const context = m.context?.text || '';
+        const offset = m.context?.offset || 0;
+        const len = m.context?.length || 0;
+        const wrong = context.substring(offset, offset + len);
+        const fix = m.replacements?.[0]?.value || '—';
+        group.push({ wrong, fix, message: m.message, context });
+      });
+
+      // 4. Отрисовать результат
       const box = document.getElementById('pdf-result');
-      box.innerHTML = text
-        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-        .replace(/## ([^\n]+)/g, '<strong style="color:#00ccff;display:block;margin-top:10px">$1</strong>')
-        .replace(/\n/g,'<br>');
+      if (matches.length === 0) {
+        box.innerHTML = '<span style="color:#00ff88">✓ Ошибок не обнаружено</span>';
+      } else {
+        let html = '';
+        for (const [groupName, items] of Object.entries(groups)) {
+          if (!items.length) continue;
+          html += `<strong style="color:#00ccff;display:block;margin-top:10px;margin-bottom:4px">── ${groupName.toUpperCase()} (${items.length})</strong>`;
+          items.forEach((item, i) => {
+            html += `<div style="padding:4px 0;border-bottom:1px solid #0f1520">
+              <span style="color:#ff6688">${i+1}. «${esc(item.wrong)}»</span>
+              → <span style="color:#00ff88">${esc(item.fix)}</span>
+              <span style="color:#445566;font-size:10px;display:block">${esc(item.message)}</span>
+            </div>`;
+          });
+        }
+        box.innerHTML = html;
+      }
       box.classList.add('visible');
 
-      const errorCount = (text.match(/ошибк/gi) || []).length;
-      setStatus('pdf', 'Проверка завершена', 'ok');
+      // 5. Текстовый отчёт для скачивания
+      let reportLines = [
+        'ОТЧЁТ ПРОВЕРКИ PDF-МАКЕТА',
+        'Markettools · Nadezhda Tsypkins 2026',
+        '='.repeat(50),
+        `Файл: ${file.name}`,
+        `Дата: ${new Date().toLocaleString('ru')}`,
+        `Всего найдено ошибок: ${matches.length}`,
+        ''
+      ];
+      for (const [groupName, items] of Object.entries(groups)) {
+        if (!items.length) continue;
+        reportLines.push(`\n── ${groupName.toUpperCase()} (${items.length}) ──`);
+        items.forEach((item, i) => {
+          reportLines.push(`${i+1}. Ошибка: «${item.wrong}» → Исправление: «${item.fix}»`);
+          reportLines.push(`   ${item.message}`);
+        });
+      }
+      if (matches.length === 0) reportLines.push('Ошибок не обнаружено.');
+      pdfReport = reportLines.join('\n');
+
+      setStatus('pdf', matches.length === 0
+        ? '✓ Ошибок не найдено'
+        : `Найдено ошибок: ${matches.length}`, 'ok');
       document.getElementById('pdf-dl-btn').disabled = false;
 
     } catch(err) {
@@ -939,12 +952,13 @@ ${truncated}
     document.getElementById('pdf-run-btn').disabled = false;
   }
 
+  function esc(str) {
+    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
   function downloadPDF() {
     if (!pdfReport) return;
-    const blob = new Blob([
-      'ОТЧЁТ ПРОВЕРКИ PDF-МАКЕТА\nMarkettools · Nadezhda Tsypkins 2026\n' +
-      '='.repeat(50) + '\n\n' + pdfReport
-    ], { type: 'text/plain;charset=utf-8' });
+    const blob = new Blob([pdfReport], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = 'pdf_check_report.txt';
@@ -965,8 +979,7 @@ ${truncated}
       'Политика данных · Markettools\n\n' +
       '• Мы не собираем, не храним и не передаём ваши данные третьим лицам.\n' +
       '• Загружаемые файлы обрабатываются локально в вашем браузере.\n' +
-      '• При использовании AI-инструментов текст отправляется напрямую на api.anthropic.com с вашим личным ключом.\n' +
-      '• Мы не имеем доступа к вашему API-ключу или результатам анализа.\n' +
+      '• Для проверки орфографии текст отправляется на languagetool.org — публичный бесплатный сервис.\n' +
       '• Исходный код открыт на GitHub.\n\n' +
       '© Nadezhda Tsypkins 2026'
     );
