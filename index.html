@@ -8,8 +8,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://unpkg.com/docx@8.5.0/build/index.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root {
     --bg: #050508;
@@ -953,112 +951,99 @@
     return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
-  // ── ЭКСПОРТ В WORD (.docx) ──
-  async function downloadDOCX() {
-    if (!pdfMatches.length && pdfMatches.length !== 0) return;
-    const { Document, Paragraph, TextRun, HeadingLevel, AlignmentType, Packer, BorderStyle } = docx;
-
+  // ── ОБЩАЯ ФУНКЦИЯ: строим HTML отчёта ──
+  function buildReportHTML(forPrint = false) {
     const date = new Date().toLocaleString('ru');
     const groups = {};
     pdfMatches.forEach(m => { if (!groups[m.cat]) groups[m.cat]=[]; groups[m.cat].push(m); });
 
-    const children = [
-      new Paragraph({ text: 'ОТЧЁТ ПРОВЕРКИ PDF-МАКЕТА', heading: HeadingLevel.HEADING_1 }),
-      new Paragraph({ children: [new TextRun({ text: 'Markettools · Nadezhda Tsypkins 2026', color: '888888', size: 20 })] }),
-      new Paragraph({ text: '' }),
-      new Paragraph({ children: [new TextRun({ text: `Файл: `, bold: true }), new TextRun(pdfFileName)] }),
-      new Paragraph({ children: [new TextRun({ text: `Дата: `, bold: true }), new TextRun(date)] }),
-      new Paragraph({ children: [new TextRun({ text: `Всего ошибок: `, bold: true }), new TextRun(String(pdfMatches.length))] }),
-      new Paragraph({ text: '' }),
-    ];
+    const printStyle = forPrint ? `
+      @media print { body { margin: 0; } .no-print { display:none; } }
+      @page { margin: 20mm; }
+    ` : '';
 
+    let rows = '';
     if (pdfMatches.length === 0) {
-      children.push(new Paragraph({ children: [new TextRun({ text: '✓ Ошибок не обнаружено — текст чистый!', color: '00AA55', bold: true })] }));
+      rows = '<tr><td colspan="4" style="color:#007733;font-weight:bold;text-align:center;padding:16px">✓ Ошибок не обнаружено — текст чистый!</td></tr>';
     } else {
       for (const [cat, items] of Object.entries(groups)) {
-        children.push(new Paragraph({ text: `${cat} (${items.length})`, heading: HeadingLevel.HEADING_2 }));
+        rows += `<tr><td colspan="4" style="background:#e8f0f8;font-weight:bold;padding:8px 10px;color:#003366">${cat} — ${items.length} шт.</td></tr>`;
         items.forEach((item, i) => {
-          children.push(new Paragraph({
-            children: [
-              new TextRun({ text: `${i+1}. `, bold: true }),
-              new TextRun({ text: `Страница ${item.page}  `, color: '888888' }),
-              new TextRun({ text: `«${item.wrong}»`, color: 'CC2244', bold: true }),
-              new TextRun({ text: `  →  ` }),
-              new TextRun({ text: `«${item.fix}»`, color: '007733', bold: true }),
-            ]
-          }));
-          children.push(new Paragraph({
-            children: [new TextRun({ text: item.message, color: '888888', size: 18 })],
-            indent: { left: 360 }
-          }));
-          children.push(new Paragraph({ text: '' }));
+          rows += `<tr>
+            <td style="color:#888;text-align:center">${i+1}</td>
+            <td style="text-align:center;font-weight:bold;color:#555">стр. ${item.page}</td>
+            <td><span style="color:#cc2244;font-weight:bold">«${item.wrong}»</span>
+                <span style="color:#aaa"> → </span>
+                <span style="color:#007733;font-weight:bold">«${item.fix}»</span>
+                <div style="color:#999;font-size:11px;margin-top:3px">${item.message}</div>
+            </td>
+            <td style="color:#777;font-size:12px">${item.cat}</td>
+          </tr>`;
         });
       }
     }
 
-    const doc = new Document({ sections: [{ children }] });
-    const blob = await Packer.toBlob(doc);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = 'отчёт_проверки.docx';
-    a.click(); URL.revokeObjectURL(url);
+    return `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Отчёт проверки — ${pdfFileName}</title>
+<style>
+  ${printStyle}
+  body { font-family: Arial, sans-serif; font-size: 13px; color: #222; padding: 24px; max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 20px; color: #003366; margin-bottom: 4px; }
+  .meta { color: #888; font-size: 12px; margin-bottom: 20px; }
+  .meta span { margin-right: 20px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #003366; color: #fff; padding: 8px 10px; text-align: left; font-size: 12px; }
+  td { padding: 7px 10px; border-bottom: 1px solid #eee; vertical-align: top; }
+  tr:hover td { background: #f9f9f9; }
+  .footer { margin-top: 24px; color: #bbb; font-size: 11px; text-align: center; border-top: 1px solid #eee; padding-top: 12px; }
+  ${forPrint ? '' : '.no-print { display:none }'}
+</style>
+</head>
+<body>
+<h1>Отчёт проверки PDF-макета</h1>
+<div class="meta">
+  <span><b>Файл:</b> ${pdfFileName}</span>
+  <span><b>Дата:</b> ${date}</span>
+  <span><b>Ошибок:</b> ${pdfMatches.length}</span>
+</div>
+<table>
+  <thead><tr><th>#</th><th>Стр.</th><th>Ошибка → Исправление</th><th>Тип</th></tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+<div class="footer">Markettools · Nadezhda Tsypkins 2026</div>
+</body></html>`;
   }
 
-  // ── ЭКСПОРТ В PDF ──
+  // ── ЭКСПОРТ В WORD (.doc) ──
+  function downloadDOCX() {
+    if (!document.getElementById('pdf-result').classList.contains('visible')) return;
+    const html = buildReportHTML(false);
+    // Word открывает HTML с правильным charset — кириллица работает идеально
+    const blob = new Blob(['\ufeff' + html], { type: 'application/msword;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'отчёт_проверки.doc';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ── ЭКСПОРТ В PDF (через печать браузера) ──
   function downloadPDFReport() {
-    if (pdfMatches.length === 0 && !document.getElementById('pdf-result').classList.contains('visible')) return;
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-
-    const margin = 15, pageW = 210, contentW = pageW - margin * 2;
-    let y = 20;
-
-    function checkPage(h = 8) {
-      if (y + h > 280) { doc.addPage(); y = 20; }
-    }
-
-    // Заголовок
-    doc.setFontSize(16); doc.setFont('helvetica','bold');
-    doc.setTextColor(0,0,0);
-    doc.text('OTCHET PROVERKI PDF-MAKETA', margin, y); y += 8;
-    doc.setFontSize(9); doc.setFont('helvetica','normal');
-    doc.setTextColor(120,120,120);
-    doc.text('Markettools - Nadezhda Tsypkins 2026', margin, y); y += 6;
-    doc.text(`Fajl: ${pdfFileName}`, margin, y); y += 5;
-    doc.text(`Data: ${new Date().toLocaleString('ru')}`, margin, y); y += 5;
-    doc.text(`Vsego oshibok: ${pdfMatches.length}`, margin, y); y += 8;
-
-    // Линия
-    doc.setDrawColor(200,200,200); doc.line(margin, y, pageW - margin, y); y += 6;
-
-    if (pdfMatches.length === 0) {
-      doc.setFontSize(12); doc.setTextColor(0,150,80); doc.setFont('helvetica','bold');
-      doc.text('Oshibok ne obnaruzheno!', margin, y);
-    } else {
-      const groups = {};
-      pdfMatches.forEach(m => { if (!groups[m.cat]) groups[m.cat]=[]; groups[m.cat].push(m); });
-
-      for (const [cat, items] of Object.entries(groups)) {
-        checkPage(12);
-        doc.setFontSize(12); doc.setFont('helvetica','bold'); doc.setTextColor(0,100,180);
-        doc.text(`${cat} (${items.length})`, margin, y); y += 7;
-
-        items.forEach((item, i) => {
-          checkPage(16);
-          doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(0,0,0);
-          const label = `${i+1}. [str.${item.page}] «${item.wrong}» -> «${item.fix}»`;
-          const labelLines = doc.splitTextToSize(label, contentW);
-          labelLines.forEach(line => { checkPage(); doc.text(line, margin, y); y += 5; });
-
-          doc.setFont('helvetica','normal'); doc.setTextColor(130,130,130);
-          const msgLines = doc.splitTextToSize(item.message, contentW - 5);
-          msgLines.forEach(line => { checkPage(); doc.text(line, margin + 4, y); y += 4.5; });
-          y += 2;
-        });
-        y += 3;
-      }
-    }
-
-    doc.save('otchet_proverki.pdf');
+    if (!document.getElementById('pdf-result').classList.contains('visible')) return;
+    const html = buildReportHTML(true);
+    const win = window.open('', '_blank');
+    win.document.write(html);
+    win.document.close();
+    // Небольшая задержка чтобы шрифты загрузились
+    setTimeout(() => {
+      win.focus();
+      win.print();
+      // win.close() — не закрываем, пользователь сам закроет после сохранения
+    }, 600);
   }
 
   // ─────────────────────────────────────────────
