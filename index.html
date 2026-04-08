@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Markettools — Marketing Tools</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  :root {
+    --bg: #050508;
+    --bg2: #0a0a12;
+    --panel: #0d0d1a;
+    --border: #1a1a2e;
+    --neon: #00ff88;
+    --neon2: #00ccff;
+    --neon3: #ff00aa;
+    --neon-glow: 0 0 8px #00ff88, 0 0 20px #00ff8866, 0 0 40px #00ff8833;
+    --neon2-glow: 0 0 8px #00ccff, 0 0 20px #00ccff66, 0 0 40px #00ccff33;
+    --text: #c8d8e8;
+    --text-dim: #556677;
+    --font-display: 'Orbitron', monospace;
+    --font-mono: 'Share Tech Mono', monospace;
+    --font-body: 'Rajdhani', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 16px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,255,136,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,136,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Scanlines */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 24px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── HEADER ── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 28px 0 20px;
+    position: relative;
+  }
+
+  .header-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .logo {
+    font-family: var(--font-display);
+    font-size: clamp(22px, 4vw, 38px);
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    color: var(--neon);
+    text-shadow: var(--neon-glow);
+    text-decoration: none;
+    animation: pulse 3s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { text-shadow: var(--neon-glow); }
+    50% { text-shadow: 0 0 12px #00ff88, 0 0 30px #00ff88aa, 0 0 60px #00ff8844; }
+  }
+
+  .logo span {
+    color: var(--neon2);
+    text-shadow: var(--neon2-glow);
+  }
+
+  .tagline {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+
+  .badge-github {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--neon2);
+    border: 1px solid var(--neon2);
+    padding: 6px 14px;
+    letter-spacing: 0.1em;
+    transition: all 0.2s;
+    text-decoration: none;
+    box-shadow: 0 0 6px #00ccff33;
+  }
+  .badge-github:hover {
+    background: #00ccff11;
+    box-shadow: var(--neon2-glow);
+  }
+
+  /* ── HERO ── */
+  .hero {
+    padding: 56px 0 40px;
+    text-align: center;
+  }
+
+  .hero h1 {
+    font-family: var(--font-display);
+    font-size: clamp(16px, 2.5vw, 22px);
+    font-weight: 400;
+    letter-spacing: 0.25em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+
+  .hero h1 em {
+    color: var(--neon);
+    font-style: normal;
+    text-shadow: var(--neon-glow);
+  }
+
+  .privacy-banner {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid #1a3a2a;
+    background: #001a0d;
+    padding: 10px 22px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: #44bb77;
+    letter-spacing: 0.08em;
+    margin-top: 8px;
+  }
+
+  .privacy-banner::before {
+    content: '▶';
+    color: var(--neon);
+    font-size: 10px;
+  }
+
+  /* ── SECTION LABEL ── */
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    color: var(--neon);
+    text-transform: uppercase;
+    margin-bottom: 28px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, #00ff8833, transparent);
+  }
+
+  /* ── TOOLS GRID ── */
+  .tools-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+    gap: 24px;
+    padding-bottom: 60px;
+  }
+
+  @media (max-width: 600px) {
+    .tools-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ── TOOL CARD ── */
+  .tool-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 28px;
+    position: relative;
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+
+  .tool-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px;
+    height: 100%;
+    background: var(--neon);
+    box-shadow: 0 0 10px var(--neon);
+    opacity: 0.7;
+  }
+
+  .tool-card:nth-child(2)::before {
+    background: var(--neon2);
+    box-shadow: 0 0 10px var(--neon2);
+  }
+
+  .tool-card:hover {
+    border-color: #2a2a3e;
+    box-shadow: 0 0 20px rgba(0,255,136,0.05), inset 0 0 30px rgba(0,255,136,0.02);
+  }
+
+  .tool-card:nth-child(2):hover {
+    box-shadow: 0 0 20px rgba(0,204,255,0.05), inset 0 0 30px rgba(0,204,255,0.02);
+  }
+
+  .tool-id {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--neon);
+    letter-spacing: 0.2em;
+    margin-bottom: 8px;
+    opacity: 0.7;
+  }
+
+  .tool-card:nth-child(2) .tool-id { color: var(--neon2); }
+
+  .tool-title {
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    margin-bottom: 8px;
+    color: #fff;
+  }
+
+  .tool-desc {
+    font-size: 14px;
+    color: var(--text-dim);
+    line-height: 1.6;
+    margin-bottom: 22px;
+    font-weight: 300;
+  }
+
+  /* ── UPLOAD ZONE ── */
+  .upload-zone {
+    border: 1px dashed #1e3a2e;
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    margin-bottom: 16px;
+    background: #050f08;
+  }
+
+  .tool-card:nth-child(2) .upload-zone {
+    border-color: #1a2e3a;
+    background: #050a0f;
+  }
+
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--neon);
+    background: #001a0d;
+    box-shadow: inset 0 0 20px #00ff8811;
+  }
+
+  .tool-card:nth-child(2) .upload-zone:hover,
+  .tool-card:nth-child(2) .upload-zone.drag-over {
+    border-color: var(--neon2);
+    background: #00080f;
+    box-shadow: inset 0 0 20px #00ccff11;
+  }
+
+  .upload-zone input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+
+  .upload-icon {
+    font-size: 28px;
+    margin-bottom: 8px;
+    display: block;
+    opacity: 0.5;
+  }
+
+  .upload-text {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+  }
+
+  .upload-hint {
+    font-size: 11px;
+    color: #334455;
+    margin-top: 4px;
+    font-family: var(--font-mono);
+  }
+
+  /* ── FILE SELECTED ── */
+  .file-info {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--neon);
+    background: #001a0d;
+    border: 1px solid #1a3a2a;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+  }
+  .file-info.visible { display: flex; }
+  .tool-card:nth-child(2) .file-info {
+    color: var(--neon2);
+    background: #00080f;
+    border-color: #1a2e3a;
+  }
+
+  /* ── COLUMN SELECT ── */
+  .col-select-group {
+    display: none;
+    gap: 10px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .col-select-group.visible { display: flex; }
+
+  .col-select-group label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  .col-select-group select {
+    background: #0a0a15;
+    border: 1px solid #2a2a3e;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 6px 10px;
+    outline: none;
+    min-width: 120px;
+  }
+  .col-select-group select:focus { border-color: var(--neon); }
+
+  /* ── BUTTONS ── */
+  .btn-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    border: none;
+    padding: 10px 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-primary {
+    background: var(--neon);
+    color: #000;
+    font-weight: 700;
+  }
+  .btn-primary:hover {
+    box-shadow: var(--neon-glow);
+    transform: translateY(-1px);
+  }
+  .btn-primary:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  .tool-card:nth-child(2) .btn-primary {
+    background: var(--neon2);
+  }
+  .tool-card:nth-child(2) .btn-primary:hover {
+    box-shadow: var(--neon2-glow);
+  }
+
+  .btn-outline {
+    background: transparent;
+    color: var(--neon);
+    border: 1px solid var(--neon);
+  }
+  .btn-outline:hover {
+    background: #00ff8811;
+    box-shadow: 0 0 8px #00ff8844;
+  }
+  .btn-outline:disabled {
+    opacity: 0.2;
+    cursor: not-allowed;
+  }
+
+  .tool-card:nth-child(2) .btn-outline {
+    color: var(--neon2);
+    border-color: var(--neon2);
+  }
+  .tool-card:nth-child(2) .btn-outline:hover {
+    background: #00ccff11;
+    box-shadow: 0 0 8px #00ccff44;
+  }
+
+  /* ── STATUS / RESULTS ── */
+  .status-bar {
+    margin-top: 16px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    min-height: 18px;
+  }
+  .status-bar.ok { color: var(--neon); }
+  .status-bar.err { color: #ff4466; }
+  .status-bar.loading { color: #aaaa00; animation: blink 0.8s infinite; }
+
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .result-box {
+    display: none;
+    margin-top: 16px;
+    background: #03080d;
+    border: 1px solid #1a2030;
+    padding: 14px;
+    max-height: 220px;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--text);
+  }
+  .result-box.visible { display: block; }
+
+  .result-box::-webkit-scrollbar { width: 4px; }
+  .result-box::-webkit-scrollbar-track { background: #050a0f; }
+  .result-box::-webkit-scrollbar-thumb { background: #1e3a2e; }
+
+  .result-row {
+    display: grid;
+    grid-template-columns: 1fr 80px 80px 60px;
+    gap: 8px;
+    padding: 4px 0;
+    border-bottom: 1px solid #0f1520;
+    font-size: 11px;
+  }
+  .result-row.header {
+    color: var(--text-dim);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+  }
+  .cat-a { color: var(--neon); }
+  .cat-b { color: var(--neon2); }
+  .cat-c { color: var(--text-dim); }
+
+  /* ── API KEY ── */
+  .api-key-group {
+    margin-bottom: 14px;
+  }
+  .api-key-group label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    display: block;
+    margin-bottom: 5px;
+  }
+  .api-key-group input {
+    width: 100%;
+    background: #0a0a15;
+    border: 1px solid #2a2a3e;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 8px 12px;
+    outline: none;
+    letter-spacing: 0.05em;
+  }
+  .api-key-group input:focus { border-color: var(--neon2); }
+  .api-key-note {
+    font-size: 10px;
+    color: #334455;
+    font-family: var(--font-mono);
+    margin-top: 4px;
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 20px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .copyright {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.12em;
+  }
+  .copyright span { color: var(--neon); }
+
+  .footer-links {
+    display: flex;
+    gap: 20px;
+  }
+  .footer-links a {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    text-decoration: none;
+    letter-spacing: 0.1em;
+    transition: color 0.2s;
+  }
+  .footer-links a:hover { color: var(--neon); }
+
+  /* ── Intro animation ── */
+  .hero, .tools-grid, header {
+    animation: fadeUp 0.7s ease both;
+  }
+  .tools-grid { animation-delay: 0.2s; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* corner brackets */
+  .tool-card::after {
+    content: '';
+    position: absolute;
+    bottom: 8px; right: 8px;
+    width: 12px; height: 12px;
+    border-bottom: 1px solid #1a2030;
+    border-right: 1px solid #1a2030;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- HEADER -->
+  <header>
+    <div class="header-inner">
+      <div>
+        <a class="logo" href="#">Market<span>tools</span></a>
+        <div class="tagline">// marketing tools · open source · privacy first</div>
+      </div>
+      <a class="badge-github" href="https://github.com/" target="_blank" rel="noopener">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+        GitHub
+      </a>
+    </div>
+  </header>
+
+  <!-- HERO -->
+  <div class="hero">
+    <h1>Маркетинговые инструменты нового поколения.<br><em>Быстро. Локально. Без слежки.</em></h1>
+    <div class="privacy-banner">
+      Ваши данные не передаются на серверы и не хранятся. Все вычисления выполняются в вашем браузере или через прямой API-запрос, который вы контролируете сами.
+    </div>
+  </div>
+
+  <!-- TOOLS -->
+  <div class="section-label">// tools / v1.0</div>
+
+  <div class="tools-grid">
+
+    <!-- ── TOOL 1: ABC Analysis ── -->
+    <div class="tool-card">
+      <div class="tool-id">TOOL_01 · EXCEL · CLIENT-SIDE</div>
+      <div class="tool-title">ABC-АНАЛИЗ ИЗ EXCEL</div>
+      <div class="tool-desc">
+        Загрузите .xlsx файл, выберите столбцы с наименованием и показателем (выручка, прибыль, объём). Получите ABC-классификацию: A — 80%, B — 15%, C — 5%.
+      </div>
+
+      <div class="upload-zone" id="abc-zone">
+        <input type="file" id="abc-file" accept=".xlsx,.xls" onchange="abcFileChosen(event)">
+        <span class="upload-icon">⬡</span>
+        <div class="upload-text">Перетащите .xlsx / .xls или нажмите</div>
+        <div class="upload-hint">Файл не покидает ваш браузер</div>
+      </div>
+
+      <div class="file-info" id="abc-file-info">
+        <span>▶</span><span id="abc-fname"></span>
+      </div>
+
+      <div class="col-select-group" id="abc-cols">
+        <div>
+          <label>Столбец: Наименование</label>
+          <select id="abc-name-col"></select>
+        </div>
+        <div>
+          <label>Столбец: Показатель</label>
+          <select id="abc-val-col"></select>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="abc-run-btn" onclick="runABC()" disabled>ЗАПУСТИТЬ</button>
+        <button class="btn btn-outline" id="abc-dl-btn" onclick="downloadABC()" disabled>⬇ СКАЧАТЬ РЕЗУЛЬТАТ</button>
+      </div>
+
+      <div class="status-bar" id="abc-status"></div>
+      <div class="result-box" id="abc-result"></div>
+    </div>
+
+    <!-- ── TOOL 2: PDF Layout Check ── -->
+    <div class="tool-card">
+      <div class="tool-id">TOOL_02 · PDF · AI-POWERED</div>
+      <div class="tool-title">ПРОВЕРКА PDF-МАКЕТА</div>
+      <div class="tool-desc">
+        Загрузите PDF-макет — система проверит орфографию, пунктуацию и опечатки. Текст анализируется через Claude AI напрямую из вашего браузера.
+      </div>
+
+      <div class="api-key-group">
+        <label>ANTHROPIC API KEY (хранится только в памяти вкладки)</label>
+        <input type="password" id="api-key-input" placeholder="sk-ant-...">
+        <div class="api-key-note">// ключ не отправляется никуда, кроме api.anthropic.com</div>
+      </div>
+
+      <div class="upload-zone" id="pdf-zone">
+        <input type="file" id="pdf-file" accept=".pdf" onchange="pdfFileChosen(event)">
+        <span class="upload-icon">◈</span>
+        <div class="upload-text">Перетащите .pdf или нажмите</div>
+        <div class="upload-hint">Файл не сохраняется на серверах</div>
+      </div>
+
+      <div class="file-info" id="pdf-file-info">
+        <span>▶</span><span id="pdf-fname"></span>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="pdf-run-btn" onclick="runPDFCheck()" disabled>ПРОВЕРИТЬ</button>
+        <button class="btn btn-outline" id="pdf-dl-btn" onclick="downloadPDF()" disabled>⬇ СКАЧАТЬ ОТЧЁТ</button>
+      </div>
+
+      <div class="status-bar" id="pdf-status"></div>
+      <div class="result-box" id="pdf-result"></div>
+    </div>
+
+  </div>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="copyright">© <span>Nadezhda Tsypkins</span> 2026 · Markettools</div>
+    <div class="footer-links">
+      <a href="https://github.com/" target="_blank">GitHub</a>
+      <a href="#" onclick="showPrivacy()">Политика данных</a>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+  // ─────────────────────────────────────────────
+  //  PDF.js setup
+  // ─────────────────────────────────────────────
+  if (typeof pdfjsLib !== 'undefined') {
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+
+  // ─────────────────────────────────────────────
+  //  DRAG & DROP
+  // ─────────────────────────────────────────────
+  ['abc-zone','pdf-zone'].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drag-over'); });
+    el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+    el.addEventListener('drop', e => {
+      e.preventDefault(); el.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (!file) return;
+      if (id === 'abc-zone') handleABCFile(file);
+      else handlePDFFile(file);
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  //  ABC TOOL
+  // ─────────────────────────────────────────────
+  let abcWorkbook = null;
+  let abcData = null;
+  let abcResults = null;
+
+  function abcFileChosen(e) { handleABCFile(e.target.files[0]); }
+
+  function handleABCFile(file) {
+    if (!file) return;
+    document.getElementById('abc-fname').textContent = file.name;
+    document.getElementById('abc-file-info').classList.add('visible');
+    setStatus('abc', 'Читаю файл...', 'loading');
+
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        abcWorkbook = XLSX.read(e.target.result, { type: 'array' });
+        const sheet = abcWorkbook.Sheets[abcWorkbook.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        const headers = json[0] || [];
+        abcData = { headers, rows: json.slice(1) };
+
+        const nameCol = document.getElementById('abc-name-col');
+        const valCol = document.getElementById('abc-val-col');
+        nameCol.innerHTML = valCol.innerHTML =
+          headers.map((h,i) => `<option value="${i}">${h || 'Столбец '+(i+1)}</option>`).join('');
+        document.getElementById('abc-cols').classList.add('visible');
+        document.getElementById('abc-run-btn').disabled = false;
+        setStatus('abc', `Загружено: ${abcData.rows.length} строк · ${headers.length} столбцов`, 'ok');
+      } catch(err) {
+        setStatus('abc', 'Ошибка чтения файла: ' + err.message, 'err');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function runABC() {
+    const ni = +document.getElementById('abc-name-col').value;
+    const vi = +document.getElementById('abc-val-col').value;
+    const rows = abcData.rows.filter(r => r[vi] != null && !isNaN(+r[vi]));
+
+    if (rows.length === 0) { setStatus('abc','Нет числовых данных в выбранном столбце','err'); return; }
+
+    rows.sort((a,b) => (+b[vi]) - (+a[vi]));
+    const total = rows.reduce((s,r) => s + (+r[vi]), 0);
+    let cum = 0;
+    abcResults = rows.map(r => {
+      cum += +r[vi];
+      const pct = cum / total * 100;
+      return {
+        name: r[ni] ?? '—',
+        value: +r[vi],
+        cumPct: pct,
+        cat: pct <= 80 ? 'A' : pct <= 95 ? 'B' : 'C'
+      };
+    });
+
+    // Render
+    const box = document.getElementById('abc-result');
+    box.innerHTML = `
+      <div class="result-row header">
+        <span>Наименование</span><span>Значение</span><span>Нараст.%</span><span>Кат.</span>
+      </div>
+    ` + abcResults.map(r => `
+      <div class="result-row">
+        <span>${String(r.name).substring(0,30)}</span>
+        <span>${r.value.toLocaleString('ru')}</span>
+        <span>${r.cumPct.toFixed(1)}%</span>
+        <span class="cat-${r.cat.toLowerCase()}">${r.cat}</span>
+      </div>
+    `).join('');
+    box.classList.add('visible');
+
+    const counts = {A:0,B:0,C:0};
+    abcResults.forEach(r => counts[r.cat]++);
+    setStatus('abc', `Готово · A:${counts.A} B:${counts.B} C:${counts.C} позиций`, 'ok');
+    document.getElementById('abc-dl-btn').disabled = false;
+  }
+
+  function downloadABC() {
+    if (!abcResults) return;
+    const ws_data = [['Наименование','Значение','Накопл.%','Категория'],
+      ...abcResults.map(r => [r.name, r.value, r.cumPct.toFixed(2)+'%', r.cat])];
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(ws_data);
+    XLSX.utils.book_append_sheet(wb, ws, 'ABC-анализ');
+    XLSX.writeFile(wb, 'abc_result.xlsx');
+  }
+
+  // ─────────────────────────────────────────────
+  //  PDF TOOL
+  // ─────────────────────────────────────────────
+  let pdfReport = null;
+
+  function pdfFileChosen(e) { handlePDFFile(e.target.files[0]); }
+
+  function handlePDFFile(file) {
+    if (!file) return;
+    document.getElementById('pdf-fname').textContent = file.name;
+    document.getElementById('pdf-file-info').classList.add('visible');
+    document.getElementById('pdf-run-btn').disabled = false;
+    setStatus('pdf', 'Файл загружен. Нажмите ПРОВЕРИТЬ.', 'ok');
+  }
+
+  async function runPDFCheck() {
+    const apiKey = document.getElementById('api-key-input').value.trim();
+    if (!apiKey) { setStatus('pdf','Введите Anthropic API Key','err'); return; }
+
+    const fileInput = document.getElementById('pdf-file');
+    const file = fileInput.files[0];
+    if (!file) { setStatus('pdf','Выберите PDF файл','err'); return; }
+
+    setStatus('pdf','Извлекаю текст из PDF...','loading');
+    document.getElementById('pdf-run-btn').disabled = true;
+
+    try {
+      // Extract text via PDF.js
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = '';
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        fullText += content.items.map(item => item.str).join(' ') + '\n';
+      }
+
+      if (!fullText.trim()) {
+        setStatus('pdf','PDF не содержит извлекаемого текста (возможно, сканированный)','err');
+        document.getElementById('pdf-run-btn').disabled = false;
+        return;
+      }
+
+      setStatus('pdf','Отправляю текст на проверку ИИ...','loading');
+
+      const truncated = fullText.length > 8000 ? fullText.substring(0,8000) + '\n...[текст обрезан]' : fullText;
+
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model: 'claude-opus-4-5',
+          max_tokens: 2000,
+          messages: [{
+            role: 'user',
+            content: `Проверь следующий текст из PDF-макета на:
+1. Орфографические ошибки
+2. Пунктуационные ошибки  
+3. Опечатки и грамматические ошибки
+
+Для каждой найденной ошибки укажи:
+- Тип ошибки
+- Контекст (фрагмент текста)
+- Исправление
+
+Если ошибок нет — напиши "Ошибок не обнаружено".
+
+ТЕКСТ:
+---
+${truncated}
+---
+
+Ответь в формате:
+## Орфография
+[список ошибок или "Ошибок не найдено"]
+
+## Пунктуация
+[список ошибок или "Ошибок не найдено"]
+
+## Опечатки / Грамматика
+[список ошибок или "Ошибок не найдено"]
+
+## Итог
+[краткое резюме]`
+          }]
+        })
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err?.error?.message || `HTTP ${resp.status}`);
+      }
+
+      const data = await resp.json();
+      const text = data.content?.map(b => b.text || '').join('') || 'Нет ответа';
+      pdfReport = text;
+
+      const box = document.getElementById('pdf-result');
+      box.innerHTML = text
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/## ([^\n]+)/g, '<strong style="color:#00ccff;display:block;margin-top:10px">$1</strong>')
+        .replace(/\n/g,'<br>');
+      box.classList.add('visible');
+
+      const errorCount = (text.match(/ошибк/gi) || []).length;
+      setStatus('pdf', 'Проверка завершена', 'ok');
+      document.getElementById('pdf-dl-btn').disabled = false;
+
+    } catch(err) {
+      setStatus('pdf','Ошибка: ' + err.message, 'err');
+    }
+
+    document.getElementById('pdf-run-btn').disabled = false;
+  }
+
+  function downloadPDF() {
+    if (!pdfReport) return;
+    const blob = new Blob([
+      'ОТЧЁТ ПРОВЕРКИ PDF-МАКЕТА\nMarkettools · Nadezhda Tsypkins 2026\n' +
+      '='.repeat(50) + '\n\n' + pdfReport
+    ], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'pdf_check_report.txt';
+    a.click(); URL.revokeObjectURL(url);
+  }
+
+  // ─────────────────────────────────────────────
+  //  Utilities
+  // ─────────────────────────────────────────────
+  function setStatus(tool, msg, type='') {
+    const el = document.getElementById(tool+'-status');
+    el.textContent = msg;
+    el.className = 'status-bar ' + type;
+  }
+
+  function showPrivacy() {
+    alert(
+      'Политика данных · Markettools\n\n' +
+      '• Мы не собираем, не храним и не передаём ваши данные третьим лицам.\n' +
+      '• Загружаемые файлы обрабатываются локально в вашем браузере.\n' +
+      '• При использовании AI-инструментов текст отправляется напрямую на api.anthropic.com с вашим личным ключом.\n' +
+      '• Мы не имеем доступа к вашему API-ключу или результатам анализа.\n' +
+      '• Исходный код открыт на GitHub.\n\n' +
+      '© Nadezhda Tsypkins 2026'
+    );
+  }
+</script>
+</body>
+</html>
