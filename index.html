@@ -8,6 +8,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://unpkg.com/docx@8.5.0/build/index.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root {
     --bg: #050508;
@@ -677,7 +679,8 @@
 
       <div class="btn-row">
         <button class="btn btn-primary" id="pdf-run-btn" onclick="runPDFCheck()" disabled>ПРОВЕРИТЬ</button>
-        <button class="btn btn-outline" id="pdf-dl-btn" onclick="downloadPDF()" disabled>⬇ СКАЧАТЬ ОТЧЁТ</button>
+        <button class="btn btn-outline" id="pdf-dl-docx" onclick="downloadDOCX()" disabled>⬇ WORD</button>
+        <button class="btn btn-outline" id="pdf-dl-pdf" onclick="downloadPDFReport()" disabled>⬇ PDF</button>
       </div>
 
       <div class="status-bar" id="pdf-status"></div>
@@ -814,30 +817,27 @@
   }
 
   // ─────────────────────────────────────────────
-  //  PDF TOOL — LanguageTool (бесплатно, без ключа)
+  //  PDF TOOL — LanguageTool + номера страниц
   // ─────────────────────────────────────────────
-  let pdfReport = null;
+  let pdfMatches = [];
+  let pdfFileName = '';
+
+  const LT_CATEGORIES = {
+    'TYPOS': 'Опечатка', 'GRAMMAR': 'Грамматика',
+    'PUNCTUATION': 'Пунктуация', 'CASING': 'Регистр',
+    'STYLE': 'Стиль', 'TYPOGRAPHY': 'Типографика'
+  };
 
   function pdfFileChosen(e) { handlePDFFile(e.target.files[0]); }
 
   function handlePDFFile(file) {
     if (!file) return;
+    pdfFileName = file.name;
     document.getElementById('pdf-fname').textContent = file.name;
     document.getElementById('pdf-file-info').classList.add('visible');
     document.getElementById('pdf-run-btn').disabled = false;
     setStatus('pdf', 'Файл загружен. Нажмите ПРОВЕРИТЬ.', 'ok');
   }
-
-  // Категории ошибок LanguageTool → по-русски
-  const LT_CATEGORIES = {
-    'TYPOS': 'Опечатка',
-    'GRAMMAR': 'Грамматика',
-    'PUNCTUATION': 'Пунктуация',
-    'CASING': 'Регистр',
-    'STYLE': 'Стиль',
-    'TYPOGRAPHY': 'Типографика',
-    'MISC': 'Прочее'
-  };
 
   async function runPDFCheck() {
     const fileInput = document.getElementById('pdf-file');
@@ -846,72 +846,89 @@
 
     setStatus('pdf','Извлекаю текст из PDF...','loading');
     document.getElementById('pdf-run-btn').disabled = true;
+    pdfMatches = [];
 
     try {
-      // 1. Извлечь текст
+      // 1. Извлечь текст постранично, запомнить смещения
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+      // pageMap[charOffset] = номер страницы
+      const pageOffsets = []; // [{start, page}]
       let fullText = '';
+
       for (let i = 1; i <= pdf.numPages; i++) {
+        const pageStart = fullText.length;
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
-        fullText += content.items.map(item => item.str).join(' ') + '\n';
+        const pageText = content.items.map(it => it.str).join(' ') + '\n';
+        fullText += pageText;
+        pageOffsets.push({ start: pageStart, end: fullText.length - 1, page: i });
       }
 
       if (!fullText.trim()) {
-        setStatus('pdf','PDF не содержит текста (возможно, это отсканированное изображение)','err');
+        setStatus('pdf','PDF не содержит текста (возможно, это отсканированный документ)','err');
         document.getElementById('pdf-run-btn').disabled = false;
         return;
       }
 
-      // 2. Отправить в LanguageTool (бесплатно, без ключа)
-      setStatus('pdf','Проверяю орфографию и пунктуацию...','loading');
-      const chunk = fullText.substring(0, 20000); // лимит бесплатного API
+      // 2. Функция: по смещению в тексте → номер страницы
+      function getPage(offset) {
+        for (let i = pageOffsets.length - 1; i >= 0; i--) {
+          if (offset >= pageOffsets[i].start) return pageOffsets[i].page;
+        }
+        return 1;
+      }
 
-      const params = new URLSearchParams({
-        text: chunk,
-        language: 'ru',
-        enabledOnly: 'false'
-      });
+      // 3. LanguageTool API
+      setStatus('pdf','Проверяю орфографию и пунктуацию...','loading');
+      const chunk = fullText.substring(0, 20000);
 
       const resp = await fetch('https://api.languagetool.org/v2/check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: params
+        body: new URLSearchParams({ text: chunk, language: 'ru', enabledOnly: 'false' })
       });
-
       if (!resp.ok) throw new Error(`Ошибка сервера: HTTP ${resp.status}`);
 
       const data = await resp.json();
-      const matches = data.matches || [];
+      const raw = data.matches || [];
 
-      // 3. Сгруппировать по типу
-      const groups = { 'Опечатка': [], 'Грамматика': [], 'Пунктуация': [], 'Прочее': [] };
-      matches.forEach(m => {
-        const cat = LT_CATEGORIES[m.rule?.category?.id] || 'Прочее';
-        const group = groups[cat] || groups['Прочее'];
-        const context = m.context?.text || '';
-        const offset = m.context?.offset || 0;
-        const len = m.context?.length || 0;
-        const wrong = context.substring(offset, offset + len);
+      // 4. Обогатить данные: страница, категория, контекст
+      pdfMatches = raw.map(m => {
+        const charOffset = m.offset || 0;
+        const ctx = m.context?.text || '';
+        const ctxOff = m.context?.offset || 0;
+        const ctxLen = m.context?.length || 0;
+        const wrong = ctx.substring(ctxOff, ctxOff + ctxLen);
         const fix = m.replacements?.[0]?.value || '—';
-        group.push({ wrong, fix, message: m.message, context });
+        const cat = LT_CATEGORIES[m.rule?.category?.id] || 'Прочее';
+        const page = getPage(charOffset);
+        return { wrong, fix, cat, message: m.message, page, context: ctx };
       });
 
-      // 4. Отрисовать результат
+      // 5. Сгруппировать по категории
+      const groups = {};
+      pdfMatches.forEach(m => {
+        if (!groups[m.cat]) groups[m.cat] = [];
+        groups[m.cat].push(m);
+      });
+
+      // 6. Отрисовать в карточке
       const box = document.getElementById('pdf-result');
-      if (matches.length === 0) {
-        box.innerHTML = '<span style="color:#00ff88">✓ Ошибок не обнаружено</span>';
+      if (pdfMatches.length === 0) {
+        box.innerHTML = '<span style="color:#00ff88">✓ Ошибок не обнаружено — текст чистый!</span>';
       } else {
         let html = '';
-        for (const [groupName, items] of Object.entries(groups)) {
-          if (!items.length) continue;
-          html += `<strong style="color:#00ccff;display:block;margin-top:10px;margin-bottom:4px">── ${groupName.toUpperCase()} (${items.length})</strong>`;
+        for (const [cat, items] of Object.entries(groups)) {
+          html += `<strong style="color:#00ccff;display:block;margin-top:10px;margin-bottom:4px">── ${cat.toUpperCase()} (${items.length})</strong>`;
           items.forEach((item, i) => {
-            html += `<div style="padding:4px 0;border-bottom:1px solid #0f1520">
-              <span style="color:#ff6688">${i+1}. «${esc(item.wrong)}»</span>
-              → <span style="color:#00ff88">${esc(item.fix)}</span>
-              <span style="color:#445566;font-size:10px;display:block">${esc(item.message)}</span>
+            html += `<div style="padding:5px 0;border-bottom:1px solid #0f1520">
+              <span style="color:#556677;font-size:10px">СТР. ${item.page} &nbsp;</span>
+              <span style="color:#ff6688">«${esc(item.wrong)}»</span>
+              <span style="color:#445566"> → </span>
+              <span style="color:#00ff88">«${esc(item.fix)}»</span>
+              <span style="color:#445566;font-size:10px;display:block;margin-top:2px">${esc(item.message)}</span>
             </div>`;
           });
         }
@@ -919,50 +936,129 @@
       }
       box.classList.add('visible');
 
-      // 5. Текстовый отчёт для скачивания
-      let reportLines = [
-        'ОТЧЁТ ПРОВЕРКИ PDF-МАКЕТА',
-        'Markettools · Nadezhda Tsypkins 2026',
-        '='.repeat(50),
-        `Файл: ${file.name}`,
-        `Дата: ${new Date().toLocaleString('ru')}`,
-        `Всего найдено ошибок: ${matches.length}`,
-        ''
-      ];
-      for (const [groupName, items] of Object.entries(groups)) {
-        if (!items.length) continue;
-        reportLines.push(`\n── ${groupName.toUpperCase()} (${items.length}) ──`);
-        items.forEach((item, i) => {
-          reportLines.push(`${i+1}. Ошибка: «${item.wrong}» → Исправление: «${item.fix}»`);
-          reportLines.push(`   ${item.message}`);
-        });
-      }
-      if (matches.length === 0) reportLines.push('Ошибок не обнаружено.');
-      pdfReport = reportLines.join('\n');
-
-      setStatus('pdf', matches.length === 0
+      setStatus('pdf', pdfMatches.length === 0
         ? '✓ Ошибок не найдено'
-        : `Найдено ошибок: ${matches.length}`, 'ok');
-      document.getElementById('pdf-dl-btn').disabled = false;
+        : `Найдено ошибок: ${pdfMatches.length} — скачайте отчёт`, 'ok');
+
+      document.getElementById('pdf-dl-docx').disabled = false;
+      document.getElementById('pdf-dl-pdf').disabled = false;
 
     } catch(err) {
       setStatus('pdf','Ошибка: ' + err.message, 'err');
     }
-
     document.getElementById('pdf-run-btn').disabled = false;
   }
 
   function esc(str) {
-    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
-  function downloadPDF() {
-    if (!pdfReport) return;
-    const blob = new Blob([pdfReport], { type: 'text/plain;charset=utf-8' });
+  // ── ЭКСПОРТ В WORD (.docx) ──
+  async function downloadDOCX() {
+    if (!pdfMatches.length && pdfMatches.length !== 0) return;
+    const { Document, Paragraph, TextRun, HeadingLevel, AlignmentType, Packer, BorderStyle } = docx;
+
+    const date = new Date().toLocaleString('ru');
+    const groups = {};
+    pdfMatches.forEach(m => { if (!groups[m.cat]) groups[m.cat]=[]; groups[m.cat].push(m); });
+
+    const children = [
+      new Paragraph({ text: 'ОТЧЁТ ПРОВЕРКИ PDF-МАКЕТА', heading: HeadingLevel.HEADING_1 }),
+      new Paragraph({ children: [new TextRun({ text: 'Markettools · Nadezhda Tsypkins 2026', color: '888888', size: 20 })] }),
+      new Paragraph({ text: '' }),
+      new Paragraph({ children: [new TextRun({ text: `Файл: `, bold: true }), new TextRun(pdfFileName)] }),
+      new Paragraph({ children: [new TextRun({ text: `Дата: `, bold: true }), new TextRun(date)] }),
+      new Paragraph({ children: [new TextRun({ text: `Всего ошибок: `, bold: true }), new TextRun(String(pdfMatches.length))] }),
+      new Paragraph({ text: '' }),
+    ];
+
+    if (pdfMatches.length === 0) {
+      children.push(new Paragraph({ children: [new TextRun({ text: '✓ Ошибок не обнаружено — текст чистый!', color: '00AA55', bold: true })] }));
+    } else {
+      for (const [cat, items] of Object.entries(groups)) {
+        children.push(new Paragraph({ text: `${cat} (${items.length})`, heading: HeadingLevel.HEADING_2 }));
+        items.forEach((item, i) => {
+          children.push(new Paragraph({
+            children: [
+              new TextRun({ text: `${i+1}. `, bold: true }),
+              new TextRun({ text: `Страница ${item.page}  `, color: '888888' }),
+              new TextRun({ text: `«${item.wrong}»`, color: 'CC2244', bold: true }),
+              new TextRun({ text: `  →  ` }),
+              new TextRun({ text: `«${item.fix}»`, color: '007733', bold: true }),
+            ]
+          }));
+          children.push(new Paragraph({
+            children: [new TextRun({ text: item.message, color: '888888', size: 18 })],
+            indent: { left: 360 }
+          }));
+          children.push(new Paragraph({ text: '' }));
+        });
+      }
+    }
+
+    const doc = new Document({ sections: [{ children }] });
+    const blob = await Packer.toBlob(doc);
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'pdf_check_report.txt';
+    const a = document.createElement('a'); a.href = url; a.download = 'отчёт_проверки.docx';
     a.click(); URL.revokeObjectURL(url);
+  }
+
+  // ── ЭКСПОРТ В PDF ──
+  function downloadPDFReport() {
+    if (pdfMatches.length === 0 && !document.getElementById('pdf-result').classList.contains('visible')) return;
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+    const margin = 15, pageW = 210, contentW = pageW - margin * 2;
+    let y = 20;
+
+    function checkPage(h = 8) {
+      if (y + h > 280) { doc.addPage(); y = 20; }
+    }
+
+    // Заголовок
+    doc.setFontSize(16); doc.setFont('helvetica','bold');
+    doc.setTextColor(0,0,0);
+    doc.text('OTCHET PROVERKI PDF-MAKETA', margin, y); y += 8;
+    doc.setFontSize(9); doc.setFont('helvetica','normal');
+    doc.setTextColor(120,120,120);
+    doc.text('Markettools - Nadezhda Tsypkins 2026', margin, y); y += 6;
+    doc.text(`Fajl: ${pdfFileName}`, margin, y); y += 5;
+    doc.text(`Data: ${new Date().toLocaleString('ru')}`, margin, y); y += 5;
+    doc.text(`Vsego oshibok: ${pdfMatches.length}`, margin, y); y += 8;
+
+    // Линия
+    doc.setDrawColor(200,200,200); doc.line(margin, y, pageW - margin, y); y += 6;
+
+    if (pdfMatches.length === 0) {
+      doc.setFontSize(12); doc.setTextColor(0,150,80); doc.setFont('helvetica','bold');
+      doc.text('Oshibok ne obnaruzheno!', margin, y);
+    } else {
+      const groups = {};
+      pdfMatches.forEach(m => { if (!groups[m.cat]) groups[m.cat]=[]; groups[m.cat].push(m); });
+
+      for (const [cat, items] of Object.entries(groups)) {
+        checkPage(12);
+        doc.setFontSize(12); doc.setFont('helvetica','bold'); doc.setTextColor(0,100,180);
+        doc.text(`${cat} (${items.length})`, margin, y); y += 7;
+
+        items.forEach((item, i) => {
+          checkPage(16);
+          doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(0,0,0);
+          const label = `${i+1}. [str.${item.page}] «${item.wrong}» -> «${item.fix}»`;
+          const labelLines = doc.splitTextToSize(label, contentW);
+          labelLines.forEach(line => { checkPage(); doc.text(line, margin, y); y += 5; });
+
+          doc.setFont('helvetica','normal'); doc.setTextColor(130,130,130);
+          const msgLines = doc.splitTextToSize(item.message, contentW - 5);
+          msgLines.forEach(line => { checkPage(); doc.text(line, margin + 4, y); y += 4.5; });
+          y += 2;
+        });
+        y += 3;
+      }
+    }
+
+    doc.save('otchet_proverki.pdf');
   }
 
   // ─────────────────────────────────────────────
